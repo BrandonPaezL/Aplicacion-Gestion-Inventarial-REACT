@@ -313,40 +313,31 @@ const RegistroAuditoria = () => {
   }
 
   return (
-    <Container maxWidth="lg">
-      <Card 
-        sx={{ 
-          p: 3,
-          mb: 4,
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: '4px',
-            backgroundColor: theme.palette.primary.main,
-            borderRadius: '4px 0 0 4px'
-          },
-          border: 1,
-          borderColor: 'divider'
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <HistoryIcon sx={{ fontSize: 30, color: theme.palette.primary.main, mr: 2 }} />
-          <Typography variant="h4" component="h1">
-            Registro de Auditoría
-          </Typography>
-        </Box>
+    <Box sx={{ 
+      width: '100%',
+      height: '100%',
+      p: 3
+    }}>
+      <Card sx={{ 
+        p: 3,
+        borderLeft: '6px solid',
+        borderColor: 'primary.main'
+      }}>
+        <Stack spacing={3}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <HistoryIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+            <Typography variant="h5" component="h1" fontWeight="600">
+              Registro de Auditoría
+            </Typography>
+          </Box>
 
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
+          <Divider />
+
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             <TextField
               label="Buscar en registros..."
               variant="outlined"
-              fullWidth
+              sx={{ flex: 1, minWidth: '300px' }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -356,9 +347,7 @@ const RegistroAuditoria = () => {
               }}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth>
+            <FormControl sx={{ width: '200px' }}>
               <InputLabel>Tipo</InputLabel>
               <Select
                 value={filtros.tipo}
@@ -375,9 +364,7 @@ const RegistroAuditoria = () => {
                 <MenuItem value="descarga">Descarga</MenuItem>
               </Select>
             </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth>
+            <FormControl sx={{ width: '200px' }}>
               <InputLabel>Usuario</InputLabel>
               <Select
                 value={filtros.usuario}
@@ -390,9 +377,7 @@ const RegistroAuditoria = () => {
                 ))}
               </Select>
             </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth>
+            <FormControl sx={{ width: '200px' }}>
               <InputLabel>Fecha</InputLabel>
               <Select
                 value={filtros.fecha}
@@ -405,109 +390,110 @@ const RegistroAuditoria = () => {
                 <MenuItem value="mes">Último mes</MenuItem>
               </Select>
             </FormControl>
-          </Grid>
-        </Grid>
+            <Tooltip title="Exportar registros">
+              <IconButton onClick={handleExportAuditoria} color="primary" sx={{ ml: 'auto' }}>
+                <DownloadIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, mb: 2 }}>
-          <Tooltip title="Exportar registros">
-            <IconButton onClick={handleExportAuditoria} color="primary">
-              <DownloadIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Card>
-
-      <Card>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell width="15%">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <PersonIcon fontSize="small" color="action" />
-                    <Typography variant="subtitle2">Usuario</Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell width="15%">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <FilterIcon fontSize="small" color="action" />
-                    <Typography variant="subtitle2">Acción</Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell width="20%">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <EventIcon fontSize="small" color="action" />
-                    <Typography variant="subtitle2">Fecha y Hora</Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <InfoIcon fontSize="small" color="action" />
-                    <Typography variant="subtitle2">Descripción</Typography>
-                  </Stack>
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredAuditorias
-                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                .map((auditoria) => (
-                <TableRow 
-                  key={auditoria.id}
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: theme.palette.action.hover,
-                    },
-                  }}
-                >
-                  <TableCell>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell width="15%">
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <PersonIcon fontSize="small" color="action" />
-                      <Typography variant="body2">{auditoria.usuario_nombre}</Typography>
+                      <Typography variant="subtitle2" color="text.secondary">Usuario</Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell width="15%">
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <FilterIcon fontSize="small" color="action" />
+                      <Typography variant="subtitle2" color="text.secondary">Acción</Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell width="20%">
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <EventIcon fontSize="small" color="action" />
+                      <Typography variant="subtitle2" color="text.secondary">Fecha y Hora</Typography>
                     </Stack>
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={auditoria.accion}
-                      color={getTipoChipColor(auditoria.accion)}
-                      size="small"
-                      sx={{
-                        '& .MuiChip-label': {
-                          px: 2,
-                          fontSize: '0.875rem',
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {dayjs(auditoria.fecha_hora).format('DD/MM/YYYY HH:mm:ss')}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      {formatearDescripcion(auditoria)}
-                    </Typography>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <InfoIcon fontSize="small" color="action" />
+                      <Typography variant="subtitle2" color="text.secondary">Descripción</Typography>
+                    </Stack>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination
-          component="div"
-          count={filteredAuditorias.length}
-          page={page}
-          onPageChange={handleChangePage}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          labelRowsPerPage="Filas por página"
-          labelDisplayedRows={({ from, to, count }) => 
-            `${from}-${to} de ${count}`
-          }
-        />
+              </TableHead>
+              <TableBody>
+                {filteredAuditorias
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((auditoria) => (
+                  <TableRow 
+                    key={auditoria.id}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: theme.palette.action.hover,
+                      },
+                    }}
+                  >
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <PersonIcon fontSize="small" color="action" />
+                        <Typography variant="body2">{auditoria.usuario_nombre}</Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={auditoria.accion}
+                        color={getTipoChipColor(auditoria.accion)}
+                        size="small"
+                        sx={{
+                          '& .MuiChip-label': {
+                            px: 2,
+                            fontSize: '0.875rem',
+                          }
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {dayjs(auditoria.fecha_hora).format('DD/MM/YYYY HH:mm:ss')}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        {formatearDescripcion(auditoria)}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            component="div"
+            count={filteredAuditorias.length}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            labelRowsPerPage="Filas por página"
+            labelDisplayedRows={({ from, to, count }) => 
+              `${from}-${to} de ${count}`
+            }
+            sx={{
+              '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                color: 'text.secondary',
+                fontSize: '0.875rem'
+              }
+            }}
+          />
+        </Stack>
       </Card>
-    </Container>
+    </Box>
   );
 };
 

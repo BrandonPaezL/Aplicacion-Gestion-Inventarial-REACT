@@ -18,7 +18,8 @@ app.use(cors({
     'Authorization', 
     'X-User-Name', 
     'X-User-Id', 
-    'X-User-Role'
+    'X-User-Role',
+    'X-User-Email'
   ],
   credentials: true
 }));
@@ -35,23 +36,30 @@ app.use((req, res, next) => {
 // Middleware para servir archivos estáticos
 app.use('/reportes', express.static(path.join(__dirname, 'reportes')));
 
-// Middleware para verificar autenticación y extraer información del usuario
+// Middleware de autenticación
 app.use((req, res, next) => {
-  const userName = req.headers['x-user-name'] || req.headers['user-name'];
-  const userId = req.headers['x-user-id'] || req.headers['user-id'];
-  const userRole = req.headers['x-user-role'] || req.headers['user-role'];
-
-  if (!userName) {
-    console.warn('⚠️ Petición sin nombre de usuario');
+  // Obtenemos datos del usuario del header si existen
+  const userName = req.headers['x-user-name'];
+  const userId = req.headers['x-user-id'];
+  const userRole = req.headers['x-user-role'];
+  
+  // Si hay datos en los headers, los asignamos al objeto req.user
+  if (userName && userId) {
+    req.user = {
+      id: userId,
+      name: userName,
+      rol: userRole || 'usuario'
+    };
+  } else {
+    // Si no hay datos, creamos un objeto de usuario genérico
+    req.user = {
+      name: 'Sistema',
+      id: null,
+      rol: 'sistema'
+    };
+    console.log('⚠️ Petición sin nombre de usuario');
   }
-
-  // Añadir información del usuario al objeto req para uso posterior
-  req.user = {
-    name: userName || 'Sistema',
-    id: userId,
-    role: userRole
-  };
-
+  
   next();
 });
 
@@ -137,19 +145,74 @@ async function verificarConexion() {
     const connection = await pool.getConnection();
     console.log('Conexión a la base de datos establecida correctamente');
     
+    // Crear tabla de unidades
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS unidades (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(255) NOT NULL,
+        descripcion TEXT,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Tabla de unidades verificada/creada correctamente');
+
+    // Crear tabla de bodegas
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS bodegas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(255) NOT NULL,
+        unidad_id INT NOT NULL,
+        descripcion TEXT,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (unidad_id) REFERENCES unidades(id)
+      )
+    `);
+    console.log('Tabla de bodegas verificada/creada correctamente');
+
+    // Modificar tabla de productos para incluir bodega_id
+    await connection.query(`
+      ALTER TABLE productos 
+      ADD COLUMN IF NOT EXISTS bodega_id INT,
+      ADD FOREIGN KEY IF NOT EXISTS (bodega_id) REFERENCES bodegas(id)
+    `);
+    console.log('Tabla de productos modificada correctamente');
+
+    // Modificar tabla de usuarios para incluir unidad_id y rol
+    await connection.query(`
+      ALTER TABLE usuarios 
+      ADD COLUMN IF NOT EXISTS unidad_id INT,
+      ADD COLUMN IF NOT EXISTS rol ENUM('admin', 'usuario') DEFAULT 'usuario',
+      ADD FOREIGN KEY IF NOT EXISTS (unidad_id) REFERENCES unidades(id)
+    `);
+    console.log('Tabla de usuarios modificada correctamente');
+
     // Crear tabla de auditoría si no existe
     await connection.query(`
       CREATE TABLE IF NOT EXISTS auditoria (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        usuario VARCHAR(255) NOT NULL,
+        usuario_id INT,
+        usuario_nombre VARCHAR(255) NOT NULL,
         accion VARCHAR(255) NOT NULL,
         detalles TEXT,
         tabla_afectada VARCHAR(255),
-        id_registro INT,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        registro_id INT,
+        fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log('Tabla de auditoría verificada/creada correctamente');
+
+    // Crear tabla de reportes si no existe
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS reportes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(255) NOT NULL,
+        tipo VARCHAR(50) NOT NULL,
+        formato VARCHAR(20) NOT NULL,
+        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ruta_archivo TEXT NOT NULL
+      )
+    `);
+    console.log('Tabla de reportes verificada/creada correctamente');
 
     // Crear tabla de entregas si no existe
     await connection.query(`
@@ -172,6 +235,107 @@ async function verificarConexion() {
 
 verificarConexion();
 
+// Rutas de autenticación
+app.post('/api/auth/login', async (req, res) => {
+  let connection;
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Correo y contraseña son requeridos' });
+    }
+    
+    connection = await pool.getConnection();
+    const [users] = await connection.query(
+      `SELECT u.*, uni.nombre as unidad_nombre 
+       FROM usuarios u 
+       LEFT JOIN unidades uni ON u.unidad_id = uni.id 
+       WHERE u.email = ?`, 
+      [email]
+    );
+    
+    if (users.length === 0) {
+      return res.status(401).json({ message: 'Credenciales inválidas' });
+    }
+    
+    const user = users[0];
+    
+    // En un entorno real, compararíamos con un hash, pero para este ejemplo
+    // hacemos una comparación directa
+    if (password !== user.password) {
+      return res.status(401).json({ message: 'Credenciales inválidas' });
+    }
+    
+    // Registramos el login en auditoría
+    await registrarAuditoria({
+      usuario_id: user.id,
+      usuario_nombre: user.nombre,
+      accion: 'inicio_sesion',
+      detalles: 'Inicio de sesión exitoso'
+    });
+    
+    // Creamos un token JWT (simulado para este ejemplo)
+    const token = 'jwt-token-simulado-' + Date.now();
+    
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.nombre,
+        email: user.email,
+        role: user.rol,
+        unidad_id: user.unidad_id,
+        unidad_nombre: user.unidad_nombre
+      }
+    });
+  } catch (error) {
+    console.error('Error en login:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  let connection;
+  try {
+    const userId = req.headers['x-user-id'];
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'No autenticado' });
+    }
+    
+    connection = await pool.getConnection();
+    const [users] = await connection.query(
+      `SELECT u.*, uni.nombre as unidad_nombre 
+       FROM usuarios u 
+       LEFT JOIN unidades uni ON u.unidad_id = uni.id 
+       WHERE u.id = ?`, 
+      [userId]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    const user = users[0];
+    
+    res.json({
+      id: user.id,
+      name: user.nombre,
+      email: user.email,
+      role: user.rol,
+      unidad_id: user.unidad_id,
+      unidad_nombre: user.unidad_nombre
+    });
+  } catch (error) {
+    console.error('Error al obtener perfil:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 // Ruta de prueba
 app.get('/test', (req, res) => {
   res.json({ message: 'API funcionando correctamente' });
@@ -182,7 +346,11 @@ app.get('/productos', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
-    const [results] = await connection.query('SELECT * FROM productos');
+    
+    // Mostrar todos los productos sin filtros
+    const query = 'SELECT * FROM productos';
+    
+    const [results] = await connection.query(query);
     res.json(results);
   } catch (err) {
     console.error('Error en la consulta:', err);
@@ -988,13 +1156,76 @@ app.post('/reportes/generar', async (req, res) => {
   }
 });
 
-// Endpoint para descargar reportes
+// Endpoint para descargar reportes específicos por ID
+app.get('/reportes/:id/download', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [reporte] = await connection.query('SELECT * FROM reportes WHERE id = ?', [req.params.id]);
+    
+    if (!reporte || reporte.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reporte no encontrado'
+      });
+    }
+    
+    const reporteInfo = reporte[0];
+    const filePath = path.join(__dirname, 'reportes', reporteInfo.nombre);
+    
+    if (fs.existsSync(filePath)) {
+      // Establecer el tipo de contenido adecuado para la descarga
+      const contentType = reporteInfo.formato === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${reporteInfo.nombre}"`);
+      
+      // Registrar la descarga en auditoría
+      await registrarAuditoria(
+        req.user ? req.user.name : 'Sistema',
+        'descarga',
+        `Se descargó el reporte ${reporteInfo.nombre}`,
+        'reportes',
+        reporteInfo.id
+      );
+      
+      // Enviar el archivo
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      res.status(404).json({
+        success: false,
+        error: 'Archivo no encontrado'
+      });
+    }
+  } catch (error) {
+    console.error('Error al descargar reporte:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al descargar el reporte'
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Mejorar el endpoint existente para descargar por nombre
 app.get('/reportes/:nombre', (req, res) => {
   try {
-    const filePath = path.join(__dirname, 'reportes', req.params.nombre);
+    const reportesDir = path.join(__dirname, 'reportes');
+    const filePath = path.join(reportesDir, req.params.nombre);
+    
     if (fs.existsSync(filePath)) {
-      res.download(filePath);
+      // Determinar el tipo de contenido basado en la extensión
+      const extension = path.extname(req.params.nombre).toLowerCase();
+      const contentType = extension === '.pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${req.params.nombre}"`);
+      
+      // Enviar el archivo como descarga
+      fs.createReadStream(filePath).pipe(res);
     } else {
+      console.error(`Archivo no encontrado: ${filePath}`);
       res.status(404).json({
         success: false,
         error: 'Archivo no encontrado'
@@ -1017,7 +1248,7 @@ async function generarPDF(datos, tipo, nombreArchivo) {
       const filePath = path.join(reportesDir, `${nombreArchivo}.pdf`);
       const writeStream = fs.createWriteStream(filePath);
 
-      doc.pipe(writeStream);
+      doc.pipe(stream);
 
       // Título
       doc.fontSize(20).text(`Reporte de ${tipo.toUpperCase()}`, {
@@ -1273,4 +1504,1334 @@ app.listen(PORT, () => {
 // Manejar errores no capturados
 process.on('unhandledRejection', (err) => {
   console.error('Error no manejado:', err);
+});
+
+// Endpoint para reportes de movimientos
+app.post('/reportes/movimientos', async (req, res) => {
+  let connection;
+  try {
+    const { fechaInicio, fechaFin, formato, filtros } = req.body;
+    const usuario = {
+      nombre: req.headers['x-user-name'] || 'Usuario del Sistema',
+      rol: req.headers['x-user-role'] || 'Usuario'
+    };
+    
+    if (!fechaInicio || !fechaFin || !formato) {
+      throw new Error('Datos incompletos para generar el reporte');
+    }
+
+    // Crear directorio de reportes si no existe
+    const reportesDir = path.join(__dirname, 'reportes');
+    if (!fs.existsSync(reportesDir)) {
+      fs.mkdirSync(reportesDir, { recursive: true });
+    }
+
+    // Generar nombre de archivo
+    const timestamp = Date.now();
+    const nombreArchivo = `reporte_movimientos_${timestamp}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`;
+    const filePath = path.join(reportesDir, nombreArchivo);
+
+    // Obtener datos de auditoría
+    connection = await pool.getConnection();
+    
+    let query = `
+      SELECT 
+        id,
+        usuario_nombre,
+        accion,
+        fecha_hora,
+        detalles,
+        tabla_afectada,
+        registro_id
+      FROM auditoria
+      WHERE 1=1
+    `;
+    
+    let params = [];
+    
+    if (fechaInicio && fechaFin) {
+      query += ' AND DATE(fecha_hora) BETWEEN DATE(?) AND DATE(?)';
+      params.push(fechaInicio, fechaFin);
+    }
+    
+    if (filtros && filtros.estado && filtros.estado !== 'todos') {
+      query += ' AND accion = ?';
+      params.push(filtros.estado);
+    }
+    
+    query += ' ORDER BY fecha_hora DESC LIMIT 500';
+    
+    const [movimientos] = await connection.query(query, params);
+
+    if (formato === 'pdf') {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: {
+          top: 50,
+          bottom: 50,
+          left: 50,
+          right: 50
+        }
+      });
+
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      // Usar la nueva función para generar el reporte
+      await generarReporteProfesional(
+        doc,
+        'Registro de Movimientos',
+        async (doc) => {
+          // Contenido específico del reporte de movimientos
+          movimientos.forEach((mov, index) => {
+            if (doc.y > doc.page.height - 150) {
+              doc.addPage();
+            }
+
+            const accion = mov.accion ? mov.accion.toUpperCase() : 'ACCIÓN NO ESPECIFICADA';
+            const fecha = mov.fecha_hora ? dayjs(mov.fecha_hora).format('DD/MM/YYYY HH:mm') : 'Fecha no disponible';
+
+            doc.fontSize(12)
+               .fillColor('#1976D2')
+               .text(`${index + 1}. ${accion}`, { continued: true })
+               .fillColor('#757575')
+               .text(`  (${fecha})`);
+
+            doc.fontSize(10)
+               .fillColor('#000000')
+               .text(`Usuario: ${mov.usuario_nombre || 'No especificado'}`)
+               .text(`Tabla afectada: ${mov.tabla_afectada || 'N/A'}`);
+
+            // Agregar detalles si existen
+            let detalles;
+            try {
+              detalles = typeof mov.detalles === 'string' ? JSON.parse(mov.detalles) : mov.detalles;
+              if (detalles && Object.keys(detalles).length > 0) {
+                doc.text('Detalles:', { underline: true });
+                Object.entries(detalles).forEach(([key, value]) => {
+                  doc.text(`  ${key}: ${JSON.stringify(value)}`);
+                });
+              }
+            } catch (e) {
+              doc.text('Detalles: No disponibles');
+            }
+
+            doc.moveDown();
+          });
+        },
+        usuario,
+        { fechaInicio, fechaFin }
+      );
+
+      doc.end();
+
+      await new Promise((resolve, reject) => {
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+      });
+    }
+
+    // ... existing code for Excel format ...
+
+  } catch (error) {
+    console.error('Error al generar reporte de movimientos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.post('/reportes/cronograma', async (req, res) => {
+  let connection;
+  try {
+    const { fechaInicio, fechaFin, formato, filtros } = req.body;
+    const usuario = {
+      nombre: req.headers['x-user-name'] || 'Usuario del Sistema',
+      rol: req.headers['x-user-role'] || 'Usuario'
+    };
+    
+    if (!fechaInicio || !fechaFin || !formato) {
+      throw new Error('Datos incompletos para generar el reporte');
+    }
+
+    // Crear directorio de reportes si no existe
+    const reportesDir = path.join(__dirname, 'reportes');
+    if (!fs.existsSync(reportesDir)) {
+      fs.mkdirSync(reportesDir, { recursive: true });
+    }
+
+    // Generar nombre de archivo
+    const timestamp = Date.now();
+    const nombreArchivo = `reporte_cronograma_${timestamp}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`;
+    const filePath = path.join(reportesDir, nombreArchivo);
+
+    // Obtener datos de cronograma
+    connection = await pool.getConnection();
+    
+    let query = `
+      SELECT * FROM cronogramas
+      WHERE fecha_entrega BETWEEN ? AND ?
+    `;
+    
+    const params = [fechaInicio, fechaFin];
+    
+    // Aplicar filtros adicionales
+    if (filtros) {
+      if (filtros.frecuencia && filtros.frecuencia !== 'todas') {
+        query += ' AND frecuencia = ?';
+        params.push(filtros.frecuencia);
+      }
+      
+      if (filtros.destinatario && filtros.destinatario !== 'todos') {
+        query += ' AND destinatario = ?';
+        params.push(filtros.destinatario);
+      }
+    }
+    
+    query += ' ORDER BY fecha_entrega ASC';
+    
+    const [cronogramas] = await connection.query(query, params);
+    
+    if (formato === 'pdf') {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: {
+          top: 50,
+          bottom: 50,
+          left: 50,
+          right: 50
+        }
+      });
+      
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+      
+      // Usar la nueva función para generar el reporte
+      await generarReporteProfesional(
+        doc,
+        'Cronograma de Entregas',
+        async (doc) => {
+          // Agregar estadísticas generales
+          const totalEntregas = cronogramas.length;
+          const entregasHoy = cronogramas.filter(c => dayjs(c.fecha_entrega).isSame(dayjs(), 'day')).length;
+          const entregasPendientes = cronogramas.filter(c => dayjs(c.fecha_entrega).isAfter(dayjs(), 'day')).length;
+          
+          doc.fontSize(12)
+             .fillColor('#1976D2')
+             .text('Resumen', { underline: true })
+             .moveDown(0.5)
+             .fillColor('#000000')
+             .text(`Total de entregas programadas: ${totalEntregas}`)
+             .text(`Entregas para hoy: ${entregasHoy}`)
+             .text(`Entregas pendientes: ${entregasPendientes}`)
+             .moveDown();
+
+          // Agrupar entregas por mes
+          const entregasPorMes = {};
+          cronogramas.forEach(entrega => {
+            const mes = dayjs(entrega.fecha_entrega).format('MMMM YYYY');
+            if (!entregasPorMes[mes]) {
+              entregasPorMes[mes] = [];
+            }
+            entregasPorMes[mes].push(entrega);
+          });
+
+          // Mostrar entregas agrupadas por mes
+          Object.entries(entregasPorMes).forEach(([mes, entregas]) => {
+            if (doc.y > doc.page.height - 150) {
+              doc.addPage();
+            }
+
+            doc.fontSize(14)
+               .fillColor('#1976D2')
+               .text(mes.toUpperCase())
+               .moveDown(0.5);
+
+            entregas.forEach((item, index) => {
+              const esFechaHoy = dayjs(item.fecha_entrega).isSame(dayjs(), 'day');
+              const colorFecha = esFechaHoy ? '#D32F2F' : '#000000';
+              
+              doc.fontSize(12)
+                 .fillColor('#1976D2')
+                 .text(`${index + 1}. ${item.producto}`, { continued: true })
+                 .fillColor(colorFecha)
+                 .text(`  (${dayjs(item.fecha_entrega).format('DD/MM/YYYY')})`, { align: 'right' });
+
+              doc.fontSize(10)
+                 .fillColor('#000000')
+                 .text(`Cantidad: ${item.cantidad}`)
+                 .text(`Destinatario: ${item.destinatario}`)
+                 .text(`Frecuencia: ${item.frecuencia}`);
+
+              if (item.descripcion) {
+                doc.text(`Descripción: ${item.descripcion}`);
+              }
+
+              // Agregar línea separadora
+              if (index < entregas.length - 1) {
+                doc.moveDown(0.5)
+                   .moveTo(50, doc.y)
+                   .lineTo(doc.page.width - 50, doc.y)
+                   .stroke('#E0E0E0')
+                   .moveDown(0.5);
+              }
+            });
+
+            doc.moveDown();
+          });
+        },
+        usuario,
+        { fechaInicio, fechaFin }
+      );
+
+      doc.end();
+
+      await new Promise((resolve, reject) => {
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+      });
+    } else {
+      // Código existente para Excel...
+    }
+
+    // Registrar en base de datos y auditoría
+    await connection.query(
+      'INSERT INTO reportes (nombre, tipo, fecha, formato, ruta_archivo) VALUES (?, ?, NOW(), ?, ?)',
+      [nombreArchivo, 'cronograma', formato, filePath]
+    );
+    
+    await registrarAuditoria(
+      usuario.nombre,
+      'generación',
+      `Se generó un reporte de cronograma en formato ${formato} para el período ${fechaInicio} - ${fechaFin}`,
+      'reportes',
+      null
+    );
+    
+    res.json({
+      success: true,
+      mensaje: 'Reporte de cronograma generado exitosamente',
+      archivo: nombreArchivo
+    });
+    
+  } catch (error) {
+    console.error('Error al generar reporte de cronograma:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.post('/reportes/vencimientos', async (req, res) => {
+  let connection;
+  try {
+    const { fechaInicio, fechaFin, formato, filtros } = req.body;
+    const usuario = {
+      nombre: req.headers['x-user-name'] || 'Usuario del Sistema',
+      rol: req.headers['x-user-role'] || 'Usuario'
+    };
+    
+    if (!formato) {
+      throw new Error('Datos incompletos para generar el reporte');
+    }
+
+    // Crear directorio de reportes si no existe
+    const reportesDir = path.join(__dirname, 'reportes');
+    if (!fs.existsSync(reportesDir)) {
+      fs.mkdirSync(reportesDir, { recursive: true });
+    }
+
+    // Generar nombre de archivo
+    const timestamp = Date.now();
+    const nombreArchivo = `reporte_vencimientos_${timestamp}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`;
+    const filePath = path.join(reportesDir, nombreArchivo);
+
+    // Obtener datos de productos por vencer
+    connection = await pool.getConnection();
+    
+    let query = `
+      SELECT * FROM productos 
+      WHERE fecha_vencimiento IS NOT NULL
+    `;
+    
+    const params = [];
+    
+    // Aplicar filtros adicionales
+    if (filtros && filtros.estado) {
+      const fechaHoy = dayjs().format('YYYY-MM-DD');
+      if (filtros.estado === 'proximo') {
+        query += ' AND fecha_vencimiento BETWEEN ? AND DATE_ADD(?, INTERVAL 30 DAY)';
+        params.push(fechaHoy, fechaHoy);
+      } else if (filtros.estado === 'vencido') {
+        query += ' AND fecha_vencimiento < ?';
+        params.push(fechaHoy);
+      }
+    }
+    
+    query += ' ORDER BY fecha_vencimiento ASC';
+    
+    const [productos] = await connection.query(query, params);
+    
+    if (formato === 'pdf') {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: {
+          top: 50,
+          bottom: 50,
+          left: 50,
+          right: 50
+        }
+      });
+      
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+      
+      // Usar la nueva función para generar el reporte
+      await generarReporteProfesional(
+        doc,
+        'Reporte de Vencimientos',
+        async (doc) => {
+          // Agregar estadísticas generales
+          const totalProductos = productos.length;
+          const vencidos = productos.filter(p => dayjs(p.fecha_vencimiento).isBefore(dayjs(), 'day')).length;
+          const porVencer = productos.filter(p => {
+            const dias = dayjs(p.fecha_vencimiento).diff(dayjs(), 'day');
+            return dias >= 0 && dias <= 30;
+          }).length;
+          
+          doc.fontSize(12)
+             .fillColor('#1976D2')
+             .text('Resumen', { underline: true })
+             .moveDown(0.5)
+             .fillColor('#000000')
+             .text(`Total de productos: ${totalProductos}`)
+             .text(`Productos vencidos: ${vencidos}`)
+             .text(`Productos por vencer en 30 días: ${porVencer}`)
+             .moveDown();
+
+          // Tabla de productos
+          productos.forEach((item, index) => {
+            if (doc.y > doc.page.height - 150) {
+              doc.addPage();
+            }
+
+            const diasRestantes = dayjs(item.fecha_vencimiento).diff(dayjs(), 'day');
+            let estado = '';
+            let colorEstado = '#000000';
+            
+            if (diasRestantes < 0) {
+              estado = 'CADUCADO';
+              colorEstado = '#D32F2F';
+            } else if (diasRestantes === 0) {
+              estado = 'VENCE HOY';
+              colorEstado = '#FFA000';
+            } else if (diasRestantes <= 30) {
+              estado = `Vence en ${diasRestantes} días`;
+              colorEstado = '#FFA000';
+            } else {
+              estado = 'Vigente';
+              colorEstado = '#388E3C';
+            }
+            
+            doc.fontSize(12)
+               .fillColor('#1976D2')
+               .text(`${index + 1}. ${item.nombre}`, { continued: true })
+               .fillColor(colorEstado)
+               .text(`  (${estado})`, { align: 'right' });
+
+            doc.fontSize(10)
+               .fillColor('#000000')
+               .text(`Categoría: ${item.categoria || 'No especificada'}`)
+               .text(`Cantidad: ${item.cantidad}`)
+               .text(`Fecha de vencimiento: ${dayjs(item.fecha_vencimiento).format('DD/MM/YYYY')}`);
+
+            // Agregar línea separadora
+            if (index < productos.length - 1) {
+              doc.moveDown(0.5)
+                 .moveTo(50, doc.y)
+                 .lineTo(doc.page.width - 50, doc.y)
+                 .stroke('#E0E0E0')
+                 .moveDown(0.5);
+            }
+          });
+        },
+        usuario,
+        { fechaInicio, fechaFin }
+      );
+
+      doc.end();
+
+      await new Promise((resolve, reject) => {
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+      });
+    } else {
+      // Código existente para Excel...
+    }
+
+    // Registrar en base de datos y auditoría...
+    await connection.query(
+      'INSERT INTO reportes (nombre, tipo, fecha, formato, ruta_archivo) VALUES (?, ?, NOW(), ?, ?)',
+      [nombreArchivo, 'vencimientos', formato, filePath]
+    );
+    
+    await registrarAuditoria(
+      usuario.nombre,
+      'generación',
+      `Se generó un reporte de vencimientos en formato ${formato}`,
+      'reportes',
+      null
+    );
+    
+    res.json({
+      success: true,
+      mensaje: 'Reporte de vencimientos generado exitosamente',
+      archivo: nombreArchivo
+    });
+    
+  } catch (error) {
+    console.error('Error al generar reporte de vencimientos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.post('/reportes/historico', async (req, res) => {
+  let connection;
+  try {
+    const { fechaInicio, fechaFin, formato } = req.body;
+    const usuario = {
+      nombre: req.headers['x-user-name'] || 'Usuario del Sistema',
+      rol: req.headers['x-user-role'] || 'Usuario'
+    };
+    
+    if (!fechaInicio || !fechaFin || !formato) {
+      throw new Error('Datos incompletos para generar el reporte');
+    }
+
+    // Crear directorio de reportes si no existe
+    const reportesDir = path.join(__dirname, 'reportes');
+    if (!fs.existsSync(reportesDir)) {
+      fs.mkdirSync(reportesDir, { recursive: true });
+    }
+
+    // Generar nombre de archivo
+    const timestamp = Date.now();
+    const nombreArchivo = `reporte_historico_${timestamp}.${formato === 'pdf' ? 'pdf' : 'xlsx'}`;
+    const filePath = path.join(reportesDir, nombreArchivo);
+
+    // Obtener datos históricos de productos
+    connection = await pool.getConnection();
+    
+    const query = `
+      SELECT p.id, p.nombre, p.categoria, 
+             (SELECT SUM(cantidad) FROM entregas WHERE producto_id = p.id AND fecha BETWEEN ? AND ?) as salidas,
+             (SELECT MAX(cantidad) FROM productos_historico WHERE producto_id = p.id AND fecha BETWEEN ? AND ?) as maximo,
+             (SELECT MIN(cantidad) FROM productos_historico WHERE producto_id = p.id AND fecha BETWEEN ? AND ?) as minimo,
+             p.cantidad as actual
+      FROM productos p
+      ORDER BY p.nombre
+    `;
+    
+    const [productos] = await connection.query(query, [fechaInicio, fechaFin, fechaInicio, fechaFin, fechaInicio, fechaFin]);
+    
+    if (formato === 'pdf') {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: {
+          top: 50,
+          bottom: 50,
+          left: 50,
+          right: 50
+        }
+      });
+      
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+      
+      // Usar la nueva función para generar el reporte
+      await generarReporteProfesional(
+        doc,
+        'Reporte Histórico de Stock',
+        async (doc) => {
+          // Agregar estadísticas generales
+          const totalProductos = productos.length;
+          const productosSinStock = productos.filter(p => p.actual === 0).length;
+          const productosConMovimiento = productos.filter(p => p.salidas > 0).length;
+          
+          doc.fontSize(12)
+             .fillColor('#1976D2')
+             .text('Resumen', { underline: true })
+             .moveDown(0.5)
+             .fillColor('#000000')
+             .text(`Total de productos: ${totalProductos}`)
+             .text(`Productos sin stock: ${productosSinStock}`)
+             .text(`Productos con movimientos: ${productosConMovimiento}`)
+             .moveDown();
+
+          // Agrupar productos por categoría
+          const productosPorCategoria = {};
+          productos.forEach(producto => {
+            const categoria = producto.categoria || 'Sin categoría';
+            if (!productosPorCategoria[categoria]) {
+              productosPorCategoria[categoria] = [];
+            }
+            productosPorCategoria[categoria].push(producto);
+          });
+
+          // Mostrar productos agrupados por categoría
+          Object.entries(productosPorCategoria).forEach(([categoria, productos]) => {
+            if (doc.y > doc.page.height - 150) {
+              doc.addPage();
+            }
+
+            doc.fontSize(14)
+               .fillColor('#1976D2')
+               .text(categoria.toUpperCase())
+               .moveDown(0.5);
+
+            productos.forEach((item, index) => {
+              const stockBajo = item.actual < (item.minimo || 0);
+              const colorStock = stockBajo ? '#D32F2F' : '#000000';
+              
+              doc.fontSize(12)
+                 .fillColor('#1976D2')
+                 .text(`${index + 1}. ${item.nombre}`, { continued: true })
+                 .fillColor(colorStock)
+                 .text(`  (Stock: ${item.actual})`, { align: 'right' });
+
+              doc.fontSize(10)
+                 .fillColor('#000000')
+                 .text(`Stock máximo registrado: ${item.maximo || 'N/A'}`)
+                 .text(`Stock mínimo registrado: ${item.minimo || 'N/A'}`)
+                 .text(`Total de salidas: ${item.salidas || 0}`);
+
+              // Agregar línea separadora
+              if (index < productos.length - 1) {
+                doc.moveDown(0.5)
+                   .moveTo(50, doc.y)
+                   .lineTo(doc.page.width - 50, doc.y)
+                   .stroke('#E0E0E0')
+                   .moveDown(0.5);
+              }
+            });
+
+            doc.moveDown();
+          });
+        },
+        usuario,
+        { fechaInicio, fechaFin }
+      );
+
+      doc.end();
+
+      await new Promise((resolve, reject) => {
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+      });
+    } else {
+      // Código existente para Excel...
+    }
+
+    // Registrar en base de datos y auditoría
+    await connection.query(
+      'INSERT INTO reportes (nombre, tipo, fecha, formato, ruta_archivo) VALUES (?, ?, NOW(), ?, ?)',
+      [nombreArchivo, 'historico', formato, filePath]
+    );
+    
+    await registrarAuditoria(
+      usuario.nombre,
+      'generación',
+      `Se generó un reporte histórico en formato ${formato} para el período ${fechaInicio} - ${fechaFin}`,
+      'reportes',
+      null
+    );
+    
+    res.json({
+      success: true,
+      mensaje: 'Reporte histórico generado exitosamente',
+      archivo: nombreArchivo
+    });
+    
+  } catch (error) {
+    console.error('Error al generar reporte histórico:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Función para generar reportes PDF profesionales
+async function generarReporteProfesional(doc, titulo, datos, usuario, filtros = {}) {
+  // Configuración de colores y estilos
+  const colorPrimario = '#2196F3';
+  const colorSecundario = '#757575';
+  const colorFondo = '#F5F5F5';
+
+  // Encabezado con logo y título
+  doc.rect(0, 0, doc.page.width, 100).fill(colorFondo);
+  
+  // Título principal
+  doc.fontSize(24)
+     .fillColor(colorPrimario)
+     .text(titulo.toUpperCase(), 50, 50, { align: 'center' });
+  
+  // Información del reporte
+  doc.moveDown()
+     .fontSize(12)
+     .fillColor(colorSecundario);
+
+  // Agregar fecha y hora de generación
+  const fechaGeneracion = dayjs().format('DD/MM/YYYY HH:mm:ss');
+  doc.text(`Fecha de generación: ${fechaGeneracion}`, 50, 120);
+
+  // Agregar filtros si existen
+  if (filtros.fechaInicio && filtros.fechaFin) {
+    doc.moveDown()
+       .text(`Período: ${dayjs(filtros.fechaInicio).format('DD/MM/YYYY')} al ${dayjs(filtros.fechaFin).format('DD/MM/YYYY')}`);
+  }
+
+  // Línea separadora
+  doc.moveDown()
+     .moveTo(50, doc.y)
+     .lineTo(doc.page.width - 50, doc.y)
+     .stroke(colorPrimario);
+
+  // Contenido principal
+  doc.moveDown()
+     .fillColor('#000000');
+
+  // Agregar contenido específico del reporte
+  if (typeof datos === 'function') {
+    await datos(doc);
+  }
+
+  // Pie de página con firma
+  const altoPiePagina = 100;
+  doc.rect(0, doc.page.height - altoPiePagina, doc.page.width, altoPiePagina)
+     .fill(colorFondo);
+
+  // Línea de firma
+  const xFirma = doc.page.width - 200;
+  const yFirma = doc.page.height - 60;
+  
+  doc.moveTo(xFirma, yFirma)
+     .lineTo(doc.page.width - 50, yFirma)
+     .stroke(colorSecundario);
+
+  // Información del usuario
+  doc.fontSize(10)
+     .fillColor(colorSecundario)
+     .text(usuario.nombre || 'Usuario del Sistema', xFirma, yFirma + 5)
+     .fontSize(8)
+     .text(usuario.rol || 'Rol no especificado', xFirma, yFirma + 20);
+
+  // Número de página
+  doc.fontSize(10)
+     .text(
+       `Página ${doc.pageNumber}`,
+       50,
+       doc.page.height - 50,
+       { align: 'left' }
+     );
+}
+
+// Rutas para unidades (solo accesibles por administradores)
+app.get('/api/unidades', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [unidades] = await connection.query('SELECT * FROM unidades ORDER BY nombre');
+    res.json(unidades);
+  } catch (err) {
+    console.error('Error al obtener unidades:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para crear una nueva unidad (solo admin)
+app.post('/unidades', async (req, res) => {
+  const { nombre, descripcion } = req.body;
+  let connection;
+  
+  try {
+    // Validar que el nombre esté presente
+    if (!nombre) {
+      return res.status(400).json({ message: 'El nombre de la unidad es requerido' });
+    }
+    
+    connection = await pool.getConnection();
+    const [result] = await connection.query(
+      'INSERT INTO unidades (nombre, descripcion) VALUES (?, ?)',
+      [nombre, descripcion || null]
+    );
+    
+    await registrarAuditoria({
+      usuario_nombre: req.headers['x-user-name'] || 'Gestor de usuarios',
+      usuario_id: req.headers['x-user-id'] || null,
+      accion: 'creación',
+      detalles: `Se creó la unidad ${nombre}`,
+      tabla_afectada: 'unidades',
+      registro_id: result.insertId
+    });
+
+    res.status(201).json({
+      message: 'Unidad creada exitosamente',
+      id: result.insertId,
+      nombre: nombre
+    });
+  } catch (err) {
+    console.error('Error al crear unidad:', err);
+    res.status(500).json({ message: 'Error al crear la unidad', error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para obtener bodegas de una unidad
+app.get('/unidades/:unidadId/bodegas', async (req, res) => {
+  const { unidadId } = req.params;
+  let connection;
+  
+  try {
+    connection = await pool.getConnection();
+    const [bodegas] = await connection.query(
+      'SELECT * FROM bodegas WHERE unidad_id = ? ORDER BY nombre',
+      [unidadId]
+    );
+    res.json(bodegas);
+  } catch (err) {
+    console.error('Error al obtener bodegas:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para crear una nueva bodega
+app.post('/bodegas', async (req, res) => {
+  const { nombre, unidad_id, descripcion } = req.body;
+  let connection;
+  
+  try {
+    connection = await pool.getConnection();
+    const [result] = await connection.query(
+      'INSERT INTO bodegas (nombre, unidad_id, descripcion) VALUES (?, ?, ?)',
+      [nombre, unidad_id, descripcion]
+    );
+    
+    await registrarAuditoria({
+      usuario_nombre: req.user.name,
+      accion: 'creación',
+      detalles: `Se creó la bodega ${nombre} en la unidad ${unidad_id}`,
+      tabla_afectada: 'bodegas',
+      registro_id: result.insertId
+    });
+
+    res.status(201).json({
+      message: 'Bodega creada exitosamente',
+      id: result.insertId
+    });
+  } catch (err) {
+    console.error('Error al crear bodega:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Middleware para verificar rol de administrador
+const verificarAdmin = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acceso denegado. Se requiere rol de administrador.' });
+  }
+  next();
+};
+
+// Rutas para unidades (solo accesibles por administradores)
+app.get('/api/unidades', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [unidades] = await connection.query('SELECT * FROM unidades ORDER BY nombre');
+    res.json(unidades);
+  } catch (err) {
+    console.error('Error al obtener unidades:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.post('/api/unidades', verificarAdmin, async (req, res) => {
+  const { codigo, nombre, descripcion } = req.body;
+  let connection;
+  
+  try {
+    connection = await pool.getConnection();
+    const [result] = await connection.query(
+      'INSERT INTO unidades (codigo, nombre, descripcion) VALUES (?, ?, ?)',
+      [codigo, nombre, descripcion]
+    );
+    
+    await registrarAuditoria({
+      usuario_nombre: req.user.name,
+      accion: 'creación',
+      detalles: `Se creó la unidad ${nombre}`,
+      tabla_afectada: 'unidades',
+      registro_id: result.insertId
+    });
+
+    res.status(201).json({
+      message: 'Unidad creada exitosamente',
+      id: result.insertId
+    });
+  } catch (err) {
+    console.error('Error al crear unidad:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Rutas para bodegas
+app.get('/api/bodegas', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [bodegas] = await connection.query(`
+      SELECT b.*, u.nombre as nombre_unidad 
+      FROM bodegas b 
+      JOIN unidades u ON b.unidad_id = u.id 
+      ${req.user.role !== 'admin' ? 'WHERE b.unidad_id = ?' : ''}
+      ORDER BY b.nombre
+    `, req.user.role !== 'admin' ? [req.user.unidad_id] : []);
+    res.json(bodegas);
+  } catch (err) {
+    console.error('Error al obtener bodegas:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.post('/api/bodegas', verificarAdmin, async (req, res) => {
+  const { nombre, unidad_id, descripcion } = req.body;
+  let connection;
+  
+  try {
+    connection = await pool.getConnection();
+    const [result] = await connection.query(
+      'INSERT INTO bodegas (nombre, unidad_id, descripcion) VALUES (?, ?, ?)',
+      [nombre, unidad_id, descripcion]
+    );
+    
+    await registrarAuditoria({
+      usuario_nombre: req.user.name,
+      accion: 'creación',
+      detalles: `Se creó la bodega ${nombre} en la unidad ${unidad_id}`,
+      tabla_afectada: 'bodegas',
+      registro_id: result.insertId
+    });
+
+    res.status(201).json({
+      message: 'Bodega creada exitosamente',
+      id: result.insertId
+    });
+  } catch (err) {
+    console.error('Error al crear bodega:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para obtener bodegas de una unidad específica
+app.get('/api/unidades/:unidadId/bodegas', async (req, res) => {
+  const { unidadId } = req.params;
+  let connection;
+  
+  try {
+    connection = await pool.getConnection();
+    // Verificar si el usuario tiene acceso a esta unidad
+    if (req.user.role !== 'admin' && req.user.unidad_id !== parseInt(unidadId)) {
+      return res.status(403).json({ error: 'No tienes acceso a esta unidad' });
+    }
+
+    const [bodegas] = await connection.query(
+      'SELECT * FROM bodegas WHERE unidad_id = ? ORDER BY nombre',
+      [unidadId]
+    );
+    res.json(bodegas);
+  } catch (err) {
+    console.error('Error al obtener bodegas:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Rutas de autenticación
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const [users] = await connection.query(
+      `SELECT u.*, uni.nombre as unidad_nombre 
+       FROM usuarios u 
+       LEFT JOIN unidades uni ON u.unidad_id = uni.id 
+       WHERE u.email = ? AND u.password = ?`,
+      [email, password]
+    );
+
+    if (users.length === 0) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    const user = users[0];
+    
+    // Registrar el inicio de sesión en auditoría
+    await registrarAuditoria({
+      usuario_nombre: user.nombre,
+      usuario_id: user.id,
+      accion: 'inicio_sesion',
+      detalles: 'Inicio de sesión exitoso'
+    });
+
+    res.json({
+      id: user.id,
+      nombre: user.nombre,
+      email: user.email,
+      rol: user.rol,
+      unidad_id: user.unidad_id,
+      unidad_nombre: user.unidad_nombre
+    });
+  } catch (err) {
+    console.error('Error en login:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  const userId = req.user.id;
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const [users] = await connection.query(
+      `SELECT u.*, uni.nombre as unidad_nombre 
+       FROM usuarios u 
+       LEFT JOIN unidades uni ON u.unidad_id = uni.id 
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const user = users[0];
+    res.json({
+      id: user.id,
+      nombre: user.nombre,
+      email: user.email,
+      rol: user.rol,
+      unidad_id: user.unidad_id,
+      unidad_nombre: user.unidad_nombre
+    });
+  } catch (err) {
+    console.error('Error al obtener usuario:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para obtener productos
+app.get('/api/productos', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    // Construir la consulta base
+    let query = `
+      SELECT p.*, b.nombre as bodega_nombre, u.nombre as unidad_nombre
+      FROM productos p
+      LEFT JOIN bodegas b ON p.bodega_id = b.id
+      LEFT JOIN unidades u ON b.unidad_id = u.id
+    `;
+    
+    const params = [];
+
+    // Si no es admin, filtrar por unidad
+    if (req.user.role !== 'admin') {
+      query += ' WHERE b.unidad_id = ?';
+      params.push(req.user.unidad_id);
+    }
+
+    query += ' ORDER BY p.nombre';
+
+    const [productos] = await connection.query(query, params);
+    res.json(productos);
+  } catch (err) {
+    console.error('Error al obtener productos:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para crear producto
+app.post('/api/productos', async (req, res) => {
+  const { codigo, nombre, descripcion, cantidad, precio, bodega_id } = req.body;
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+
+    // Verificar si el usuario tiene acceso a la bodega
+    if (req.user.role !== 'admin') {
+      const [bodegas] = await connection.query(
+        'SELECT * FROM bodegas WHERE id = ? AND unidad_id = ?',
+        [bodega_id, req.user.unidad_id]
+      );
+      if (bodegas.length === 0) {
+        return res.status(403).json({ error: 'No tienes acceso a esta bodega' });
+      }
+    }
+
+    const [result] = await connection.query(
+      'INSERT INTO productos (codigo, nombre, descripcion, cantidad, precio, bodega_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [codigo, nombre, descripcion, cantidad, precio, bodega_id]
+    );
+
+    await registrarAuditoria({
+      usuario_nombre: req.user.name,
+      accion: 'creación',
+      detalles: `Se creó el producto ${nombre}`,
+      tabla_afectada: 'productos',
+      registro_id: result.insertId
+    });
+
+    res.status(201).json({
+      message: 'Producto creado exitosamente',
+      id: result.insertId
+    });
+  } catch (err) {
+    console.error('Error al crear producto:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Middleware para verificar si el usuario es superadmin o gestor
+const verificarSuperAdmin = (req, res, next) => {
+  console.log('Headers en verificarSuperAdmin:', req.headers);
+  
+  const userEmail = req.headers['x-user-email'] || req.user?.email;
+  console.log('Email detectado:', userEmail);
+  
+  // Permitir acceso al superadmin y al gestor de usuarios
+  if (userEmail === 'admin@example.com' || userEmail === 'gestion@usuarios.com') {
+    console.log('Acceso autorizado para:', userEmail);
+    return next();
+  }
+  
+  console.log('Acceso denegado para:', userEmail);
+  return res.status(403).json({ message: 'Acceso denegado. Se requieren permisos de administrador.' });
+};
+
+// Ruta para obtener todos los usuarios
+app.get('/api/usuarios', verificarSuperAdmin, async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [users] = await connection.query(
+      `SELECT u.*, uni.nombre as unidad_nombre 
+       FROM usuarios u 
+       LEFT JOIN unidades uni ON u.unidad_id = uni.id 
+       ORDER BY u.nombre`
+    );
+    
+    // Omitir las contraseñas en la respuesta
+    const safeUsers = users.map(user => {
+      const { password, ...safeUser } = user;
+      return safeUser;
+    });
+    
+    res.json(safeUsers);
+  } catch (error) {
+    console.error('Error al obtener usuarios:', error);
+    res.status(500).json({ message: 'Error al obtener usuarios', error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para crear un nuevo usuario
+app.post('/api/usuarios', verificarSuperAdmin, async (req, res) => {
+  let connection;
+  try {
+    const { nombre, email, password, rol, unidad_id } = req.body;
+    
+    // Validar datos requeridos
+    if (!nombre || !email || !password || !unidad_id) {
+      return res.status(400).json({ 
+        message: 'Faltan datos requeridos', 
+        required: { nombre: !!nombre, email: !!email, password: !!password, unidad_id: !!unidad_id } 
+      });
+    }
+    
+    connection = await pool.getConnection();
+    
+    // Verificar si el correo ya existe
+    const [existingUsers] = await connection.query(
+      'SELECT id FROM usuarios WHERE email = ?',
+      [email]
+    );
+    
+    if (existingUsers.length > 0) {
+      return res.status(400).json({ message: 'El correo electrónico ya está registrado' });
+    }
+    
+    // Verificar si la unidad existe
+    const [existingUnidades] = await connection.query(
+      'SELECT id FROM unidades WHERE id = ?',
+      [unidad_id]
+    );
+    
+    if (existingUnidades.length === 0) {
+      return res.status(400).json({ message: 'La unidad seleccionada no existe' });
+    }
+    
+    // Insertar el nuevo usuario
+    const [result] = await connection.query(
+      `INSERT INTO usuarios (nombre, email, password, rol, unidad_id) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [nombre, email, password, rol || 'usuario', unidad_id]
+    );
+    
+    // Registrar en auditoría
+    await registrarAuditoria({
+      usuario_id: req.user?.id || 1,
+      usuario_nombre: req.user?.name || 'Sistema',
+      accion: 'creación',
+      tabla_afectada: 'usuarios',
+      registro_id: result.insertId,
+      detalles: `Se creó el usuario ${nombre} con correo ${email} y rol ${rol || 'usuario'}`
+    });
+    
+    res.status(201).json({ 
+      id: result.insertId,
+      message: 'Usuario creado exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al crear usuario:', error);
+    res.status(500).json({ message: 'Error al crear usuario', error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para eliminar un usuario
+app.delete('/api/usuarios/:id', verificarSuperAdmin, async (req, res) => {
+  let connection;
+  try {
+    const userId = req.params.id;
+    
+    // No permitir eliminar al superadmin
+    if (userId === '1') {
+      return res.status(403).json({ message: 'No se puede eliminar al usuario administrador principal' });
+    }
+    
+    connection = await pool.getConnection();
+    
+    // Verificar si el usuario existe
+    const [existingUser] = await connection.query(
+      'SELECT * FROM usuarios WHERE id = ?',
+      [userId]
+    );
+    
+    if (existingUser.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    // Eliminar el usuario
+    await connection.query('DELETE FROM usuarios WHERE id = ?', [userId]);
+    
+    // Registrar en auditoría
+    await registrarAuditoria({
+      usuario_id: req.user?.id || 1,
+      usuario_nombre: req.user?.name || 'Sistema',
+      accion: 'eliminación',
+      tabla_afectada: 'usuarios',
+      registro_id: userId,
+      detalles: `Se eliminó el usuario ${existingUser[0].nombre} con correo ${existingUser[0].email}`
+    });
+    
+    res.json({ message: 'Usuario eliminado exitosamente' });
+  } catch (error) {
+    console.error('Error al eliminar usuario:', error);
+    res.status(500).json({ message: 'Error al eliminar usuario', error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Ruta para crear una nueva unidad
+app.post('/api/unidades', async (req, res) => {
+  const { nombre, descripcion } = req.body;
+  let connection;
+  
+  try {
+    if (!nombre) {
+      return res.status(400).json({ message: 'El nombre de la unidad es requerido' });
+    }
+    
+    connection = await pool.getConnection();
+    const [result] = await connection.query(
+      'INSERT INTO unidades (nombre, descripcion) VALUES (?, ?)',
+      [nombre, descripcion || null]
+    );
+    
+    await registrarAuditoria({
+      usuario_nombre: req.headers['x-user-name'] || 'Gestor de usuarios',
+      usuario_id: req.headers['x-user-id'] || null,
+      accion: 'creación',
+      detalles: `Se creó la unidad ${nombre}`,
+      tabla_afectada: 'unidades',
+      registro_id: result.insertId
+    });
+
+    res.status(201).json({
+      message: 'Unidad creada exitosamente',
+      id: result.insertId,
+      nombre: nombre
+    });
+  } catch (err) {
+    console.error('Error al crear unidad:', err);
+    res.status(500).json({ message: 'Error al crear la unidad', error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
 });

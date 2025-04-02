@@ -449,456 +449,450 @@ const Cronograma = () => {
   }
 
   return (
-    <Container maxWidth="lg">
+    <Box sx={{ 
+      width: '100%',
+      height: '100%',
+      pt: 2
+    }}>
       <Card 
+        elevation={0}
         sx={{ 
           p: 3,
-          mb: 4,
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: '4px',
-            backgroundColor: theme.palette.primary.main,
-            borderRadius: '4px 0 0 4px'
-          },
-          border: 1,
-          borderColor: 'divider'
+          height: '100%',
+          backgroundColor: 'transparent'
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <CalendarIcon sx={{ fontSize: 30, color: theme.palette.primary.main, mr: 2 }} />
-          <Typography variant="h4" component="h1">
-            Cronograma de Entregas
-          </Typography>
-        </Box>
-      </Card>
+        <Stack spacing={3}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <CalendarIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+            <Typography variant="h5" component="h1" fontWeight="600">
+              Cronograma de Entregas
+            </Typography>
+          </Box>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
-          <Card 
-            sx={{ 
-              p: 3,
-              mb: 3,
-              height: 'auto',
-              position: 'relative',
-              overflow: 'hidden',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: '4px',
-                backgroundColor: theme.palette.info.main,
-                borderRadius: '4px 0 0 4px'
-              },
-              border: 1,
-              borderColor: 'divider',
-              '& .MuiDateCalendar-root': {
-                width: '100%',
-                maxHeight: 'none',
-                minHeight: '300px'
-              }
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center' }}>
-                <CalendarIcon sx={{ mr: 1, color: theme.palette.info.main }} />
-                Calendario de Entregas
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setOpenModal(true)}
-                sx={{
-                  bgcolor: theme.palette.primary.main,
-                  '&:hover': {
-                    bgcolor: theme.palette.primary.dark,
-                  }
-                }}
-              >
-                Nueva Programación
-              </Button>
-            </Box>
-            
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DateCalendar
-                value={selectedDate}
-                onChange={setSelectedDate}
-                slots={{
-                  day: (props) => {
-                    const hasDelivery = hasDeliveries(props.day);
-                    return (
-                      <Box
-                        onClick={(event) => handleDayClick(props.day, event)}
-                        sx={{
-                          position: 'relative',
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          cursor: hasDelivery ? 'pointer' : 'default'
-                        }}
-                      >
-                        <Tooltip 
-                          title={hasDelivery ? `${getEntregasCount(props.day)} entregas programadas` : ''}
-                          arrow
-                        >
-                          <Box
-                            sx={{
-                              color: 'text.primary',
-                              backgroundColor: props.selected ? 'primary.main' : 'transparent',
-                              borderRadius: '50%',
-                              width: '32px',
-                              height: '32px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              '&:hover': {
-                                backgroundColor: props.selected ? 'primary.dark' : 'action.hover'
-                              }
-                            }}
-                          >
-                            {props.day.format('D')}
-                          </Box>
-                        </Tooltip>
-                        {hasDelivery && (
-                          <Box
-                            sx={{
-                              position: 'absolute',
-                              bottom: -2,
-                              width: '4px',
-                              height: '4px',
-                              borderRadius: '50%',
-                              backgroundColor: 'primary.main'
-                            }}
-                          />
-                        )}
-                      </Box>
-                    );
-                  }
-                }}
-                sx={{
-                  width: '100%',
-                  bgcolor: 'background.paper',
-                  borderRadius: 2,
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={8}>
+              <Card 
+                sx={{ 
+                  p: 3,
+                  mb: 3,
+                  height: 'auto',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '4px',
+                    backgroundColor: theme.palette.info.main,
+                    borderRadius: '4px 0 0 4px'
+                  },
+                  border: 1,
+                  borderColor: 'divider',
                   '& .MuiDateCalendar-root': {
                     width: '100%',
                     maxHeight: 'none',
                     minHeight: '300px'
-                  },
-                  '& .MuiDayCalendar-header': {
-                    margin: '8px 0',
-                    display: 'flex',
-                    justifyContent: 'space-around',
-                    alignItems: 'center'
-                  },
-                  '& .MuiDayCalendar-weekContainer': {
-                    justifyContent: 'space-around',
-                    margin: '4px 0',
-                    display: 'flex'
-                  },
-                  '& .MuiPickersDay-root': {
-                    margin: '2px',
-                    padding: 0,
-                    width: '32px',
-                    height: '32px',
-                    fontSize: '0.875rem',
-                    color: 'text.primary',
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    }
-                  },
-                  '& .MuiDayCalendar-weekDayLabel': {
-                    color: 'text.secondary',
-                    fontWeight: 'bold',
-                    width: '32px',
-                    height: '32px',
-                    margin: '0',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    fontSize: '0.875rem'
-                  },
-                  '& .MuiPickersCalendarHeader-root': {
-                    paddingLeft: '8px',
-                    paddingRight: '8px',
-                    marginTop: '8px',
-                    marginBottom: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  },
-                  '& .MuiDayCalendar-slideTransition': {
-                    minHeight: '240px'
-                  },
-                  '& .MuiPickersCalendarHeader-label': {
-                    color: 'text.primary',
-                    fontWeight: 'bold'
-                  },
-                  '& .MuiPickersArrowSwitcher-root': {
-                    width: 'auto'
-                  },
-                  '& .MuiPickersCalendarHeader-switchViewButton': {
-                    color: 'text.primary'
-                  },
-                  '& .MuiPickersArrowSwitcher-button': {
-                    color: 'text.primary'
-                  },
-                  '& .Mui-selected': {
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      backgroundColor: 'primary.dark'
-                    }
-                  },
-                  '& .MuiPickersDay-today': {
-                    border: '1px solid',
-                    borderColor: 'primary.main',
-                    color: 'primary.main'
                   }
                 }}
-              />
-            </LocalizationProvider>
-          </Card>
-        </Grid>
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center' }}>
+                    <CalendarIcon sx={{ mr: 1, color: theme.palette.info.main }} />
+                    Calendario de Entregas
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => setOpenModal(true)}
+                    sx={{
+                      bgcolor: theme.palette.primary.main,
+                      '&:hover': {
+                        bgcolor: theme.palette.primary.dark,
+                      }
+                    }}
+                  >
+                    Nueva Programación
+                  </Button>
+                </Box>
+                
+                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                  <DateCalendar
+                    value={selectedDate}
+                    onChange={setSelectedDate}
+                    slots={{
+                      day: (props) => {
+                        const hasDelivery = hasDeliveries(props.day);
+                        return (
+                          <Box
+                            onClick={(event) => handleDayClick(props.day, event)}
+                            sx={{
+                              position: 'relative',
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              cursor: hasDelivery ? 'pointer' : 'default'
+                            }}
+                          >
+                            <Tooltip 
+                              title={hasDelivery ? `${getEntregasCount(props.day)} entregas programadas` : ''}
+                              arrow
+                            >
+                              <Box
+                                sx={{
+                                  color: 'text.primary',
+                                  backgroundColor: props.selected ? 'primary.main' : 'transparent',
+                                  borderRadius: '50%',
+                                  width: '32px',
+                                  height: '32px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  '&:hover': {
+                                    backgroundColor: props.selected ? 'primary.dark' : 'action.hover'
+                                  }
+                                }}
+                              >
+                                {props.day.format('D')}
+                              </Box>
+                            </Tooltip>
+                            {hasDelivery && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  bottom: -2,
+                                  width: '4px',
+                                  height: '4px',
+                                  borderRadius: '50%',
+                                  backgroundColor: 'primary.main'
+                                }}
+                              />
+                            )}
+                          </Box>
+                        );
+                      }
+                    }}
+                    sx={{
+                      width: '100%',
+                      bgcolor: 'background.paper',
+                      borderRadius: 2,
+                      '& .MuiDateCalendar-root': {
+                        width: '100%',
+                        maxHeight: 'none',
+                        minHeight: '300px'
+                      },
+                      '& .MuiDayCalendar-header': {
+                        margin: '8px 0',
+                        display: 'flex',
+                        justifyContent: 'space-around',
+                        alignItems: 'center'
+                      },
+                      '& .MuiDayCalendar-weekContainer': {
+                        justifyContent: 'space-around',
+                        margin: '4px 0',
+                        display: 'flex'
+                      },
+                      '& .MuiPickersDay-root': {
+                        margin: '2px',
+                        padding: 0,
+                        width: '32px',
+                        height: '32px',
+                        fontSize: '0.875rem',
+                        color: 'text.primary',
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      },
+                      '& .MuiDayCalendar-weekDayLabel': {
+                        color: 'text.secondary',
+                        fontWeight: 'bold',
+                        width: '32px',
+                        height: '32px',
+                        margin: '0',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        fontSize: '0.875rem'
+                      },
+                      '& .MuiPickersCalendarHeader-root': {
+                        paddingLeft: '8px',
+                        paddingRight: '8px',
+                        marginTop: '8px',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      },
+                      '& .MuiDayCalendar-slideTransition': {
+                        minHeight: '240px'
+                      },
+                      '& .MuiPickersCalendarHeader-label': {
+                        color: 'text.primary',
+                        fontWeight: 'bold'
+                      },
+                      '& .MuiPickersArrowSwitcher-root': {
+                        width: 'auto'
+                      },
+                      '& .MuiPickersCalendarHeader-switchViewButton': {
+                        color: 'text.primary'
+                      },
+                      '& .MuiPickersArrowSwitcher-button': {
+                        color: 'text.primary'
+                      },
+                      '& .Mui-selected': {
+                        backgroundColor: 'primary.main',
+                        color: 'primary.contrastText',
+                        '&:hover': {
+                          backgroundColor: 'primary.dark'
+                        }
+                      },
+                      '& .MuiPickersDay-today': {
+                        border: '1px solid',
+                        borderColor: 'primary.main',
+                        color: 'primary.main'
+                      }
+                    }}
+                  />
+                </LocalizationProvider>
+              </Card>
+            </Grid>
 
-        <Grid item xs={12} md={4}>
-          <Card 
-            sx={{ 
-              p: 3,
-              mb: 3,
-              position: 'relative',
-              overflow: 'hidden',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: '4px',
-                backgroundColor: theme.palette.success.main,
-                borderRadius: '4px 0 0 4px'
-              },
-              border: 1,
-              borderColor: 'divider'
-            }}
-          >
-            <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-              <CalendarIcon sx={{ color: theme.palette.success.main }} />
-              <Typography variant="h6" component="h2">
-                Entregas del día
-              </Typography>
-            </Stack>
-            
-            <Divider sx={{ mb: 2 }} />
-            
-            <Typography 
-              variant="subtitle1" 
-              color="text.secondary" 
-              gutterBottom
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                mb: 2
-              }}
-            >
-              <TimeIcon fontSize="small" />
-              {selectedDate.format('DD [de] MMMM [de] YYYY')}
-            </Typography>
-            
-            {getEntregasForDate(selectedDate).length === 0 ? (
-              <Alert 
-                severity="info" 
+            <Grid item xs={12} md={4}>
+              <Card 
                 sx={{ 
-                  mt: 2,
-                  display: 'flex',
-                  alignItems: 'center'
+                  p: 3,
+                  mb: 3,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '4px',
+                    backgroundColor: theme.palette.success.main,
+                    borderRadius: '4px 0 0 4px'
+                  },
+                  border: 1,
+                  borderColor: 'divider'
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <InventoryIcon />
-                No hay entregas programadas para este día
-                </Box>
-              </Alert>
-            ) : (
-              getEntregasForDate(selectedDate).map((entrega) => (
-                <Card 
-                  key={entrega.id} 
-                  sx={{ 
-                    mt: 2,
-                    position: 'relative',
-                    '&:hover': {
-                      boxShadow: 3
-                    },
-                    transition: 'box-shadow 0.3s ease-in-out'
+                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                  <CalendarIcon sx={{ color: theme.palette.success.main }} />
+                  <Typography variant="h6" component="h2">
+                    Entregas del día
+                  </Typography>
+                </Stack>
+                
+                <Divider sx={{ mb: 2 }} />
+                
+                <Typography 
+                  variant="subtitle1" 
+                  color="text.secondary" 
+                  gutterBottom
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    mb: 2
                   }}
                 >
-                  <CardContent>
-                    <Stack spacing={2}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <DeliveryIcon color="primary" />
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                          {entrega.producto}
-                        </Typography>
-                      </Box>
-                      
-                      <Divider />
-                      
-                      <Stack spacing={1}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <InventoryIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
-                            Cantidad: {entrega.cantidad} unidades
-                    </Typography>
-                        </Box>
-                        
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <PersonIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
-                      Destinatario: {entrega.destinatario}
-                    </Typography>
-                        </Box>
-                      </Stack>
-
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                        {entrega.descripcion && (
-                          <Tooltip title="Ver comentario">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => handleCommentClick(e, entrega.descripcion)}
-                              color="primary"
-                            >
-                              <CommentIcon />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        
-                        <Chip 
-                          label={entrega.frecuencia}
-                          size="small"
-                          color={getChipColorByFrecuencia(entrega.frecuencia)}
-                          variant="outlined"
-                        />
-
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(entrega.id)}
-                        color="error"
-                          sx={{
-                            '&:hover': {
-                              backgroundColor: 'error.light',
-                              color: 'error.contrastText'
-                            }
-                          }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                  <TimeIcon fontSize="small" />
+                  {selectedDate.format('DD [de] MMMM [de] YYYY')}
+                </Typography>
+                
+                {getEntregasForDate(selectedDate).length === 0 ? (
+                  <Alert 
+                    severity="info" 
+                    sx={{ 
+                      mt: 2,
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <InventoryIcon />
+                    No hay entregas programadas para este día
                     </Box>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </Card>
-
-          <Card 
-            sx={{ 
-              p: 3,
-              position: 'relative',
-              overflow: 'hidden',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: '4px',
-                backgroundColor: theme.palette.warning.main,
-                borderRadius: '4px 0 0 4px'
-              },
-              border: 1,
-              borderColor: 'divider'
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center' }}>
-                <ScheduleIcon sx={{ mr: 1, color: theme.palette.warning.main }} />
-                Reporte Semanal
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <IconButton 
-                  size="small" 
-                  onClick={() => navigateWeek('prev')}
-                  sx={{ 
-                    color: theme.palette.warning.main,
-                    '&:hover': {
-                      bgcolor: theme.palette.warning.main + '1A'
-                    }
-                  }}
-                >
-                  <NavigateBefore />
-                </IconButton>
-                <IconButton 
-                  size="small" 
-                  onClick={() => navigateWeek('next')}
-                  sx={{ 
-                    color: theme.palette.warning.main,
-                    '&:hover': {
-                      bgcolor: theme.palette.warning.main + '1A'
-                    }
-                  }}
-                >
-                  <NavigateNext />
-                </IconButton>
-              </Box>
-            </Box>
-            
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              {weekStart.format('DD MMM')} - {weekStart.endOf('week').format('DD MMM')}
-            </Typography>
-
-            {getWeekDeliveries().length === 0 ? (
-              <Alert severity="info" sx={{ mt: 2 }}>
-                No hay entregas esta semana
-              </Alert>
-            ) : (
-              <Box sx={{ mt: 2 }}>
-                {getWeekDeliveries().map((entrega) => {
-                  const entregaDate = dayjs(entrega.fecha_entrega);
-                  return (
+                  </Alert>
+                ) : (
+                  getEntregasForDate(selectedDate).map((entrega) => (
                     <Card 
                       key={entrega.id} 
                       sx={{ 
-                        mb: 2,
-                        borderLeft: 4,
-                        borderColor: 'primary.main'
+                        mt: 2,
+                        position: 'relative',
+                        '&:hover': {
+                          boxShadow: 3
+                        },
+                        transition: 'box-shadow 0.3s ease-in-out'
                       }}
                     >
                       <CardContent>
-                        <Typography variant="subtitle2" color="primary">
-                          {entregaDate.format('dddd, DD MMM')}
-                        </Typography>
-                        <Typography variant="body2" sx={{ mt: 1 }}>
-                          {entrega.producto} ({entrega.cantidad})
-                        </Typography>
+                        <Stack spacing={2}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <DeliveryIcon color="primary" />
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                              {entrega.producto}
+                            </Typography>
+                          </Box>
+                          
+                          <Divider />
+                          
+                          <Stack spacing={1}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <InventoryIcon fontSize="small" color="action" />
                         <Typography variant="body2" color="text.secondary">
-                          Para: {entrega.destinatario}
+                                Cantidad: {entrega.cantidad} unidades
                         </Typography>
+                            </Box>
+                            
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <PersonIcon fontSize="small" color="action" />
+                        <Typography variant="body2" color="text.secondary">
+                          Destinatario: {entrega.destinatario}
+                        </Typography>
+                            </Box>
+                          </Stack>
+
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                            {entrega.descripcion && (
+                              <Tooltip title="Ver comentario">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => handleCommentClick(e, entrega.descripcion)}
+                                  color="primary"
+                                >
+                                  <CommentIcon />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            
+                            <Chip 
+                              label={entrega.frecuencia}
+                              size="small"
+                              color={getChipColorByFrecuencia(entrega.frecuencia)}
+                              variant="outlined"
+                            />
+
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDelete(entrega.id)}
+                            color="error"
+                              sx={{
+                                '&:hover': {
+                                  backgroundColor: 'error.light',
+                                  color: 'error.contrastText'
+                                }
+                              }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                        </Stack>
                       </CardContent>
                     </Card>
-                  );
-                })}
-              </Box>
-            )}
-          </Card>
-        </Grid>
-      </Grid>
+                  ))
+                )}
+              </Card>
+
+              <Card 
+                sx={{ 
+                  p: 3,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '4px',
+                    backgroundColor: theme.palette.warning.main,
+                    borderRadius: '4px 0 0 4px'
+                  },
+                  border: 1,
+                  borderColor: 'divider'
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ScheduleIcon sx={{ mr: 1, color: theme.palette.warning.main }} />
+                    Reporte Semanal
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => navigateWeek('prev')}
+                      sx={{ 
+                        color: theme.palette.warning.main,
+                        '&:hover': {
+                          bgcolor: theme.palette.warning.main + '1A'
+                        }
+                      }}
+                    >
+                      <NavigateBefore />
+                    </IconButton>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => navigateWeek('next')}
+                      sx={{ 
+                        color: theme.palette.warning.main,
+                        '&:hover': {
+                          bgcolor: theme.palette.warning.main + '1A'
+                        }
+                      }}
+                    >
+                      <NavigateNext />
+                    </IconButton>
+                  </Box>
+                </Box>
+                
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  {weekStart.format('DD MMM')} - {weekStart.endOf('week').format('DD MMM')}
+                </Typography>
+
+                {getWeekDeliveries().length === 0 ? (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    No hay entregas esta semana
+                  </Alert>
+                ) : (
+                  <Box sx={{ mt: 2 }}>
+                    {getWeekDeliveries().map((entrega) => {
+                      const entregaDate = dayjs(entrega.fecha_entrega);
+                      return (
+                        <Card 
+                          key={entrega.id} 
+                          sx={{ 
+                            mb: 2,
+                            borderLeft: 4,
+                            borderColor: 'primary.main'
+                          }}
+                        >
+                          <CardContent>
+                            <Typography variant="subtitle2" color="primary">
+                              {entregaDate.format('dddd, DD MMM')}
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              {entrega.producto} ({entrega.cantidad})
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Para: {entrega.destinatario}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </Box>
+                )}
+              </Card>
+            </Grid>
+          </Grid>
+        </Stack>
+      </Card>
 
       <Dialog 
         open={openModal} 
@@ -1147,7 +1141,7 @@ const Cronograma = () => {
           </FormControl>
         </Box>
       </Menu>
-    </Container>
+    </Box>
   );
 };
 

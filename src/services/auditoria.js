@@ -12,14 +12,19 @@ const auditAxios = axios.create({
 
 // Interceptor para añadir información del usuario
 auditAxios.interceptors.request.use((config) => {
-  const userStr = localStorage.getItem('user');
-  if (userStr) {
-    const user = JSON.parse(userStr);
-    if (user?.user) {
-      config.headers['X-User-Name'] = user.user.name;
-      config.headers['X-User-Id'] = user.user.id;
-      config.headers['X-User-Role'] = user.user.role;
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const userData = JSON.parse(userStr);
+      if (userData.user) {
+        config.headers['Authorization'] = `Bearer ${userData.token}`;
+        config.headers['X-User-Id'] = userData.user.id;
+        config.headers['X-User-Name'] = userData.user.nombre;
+        config.headers['X-User-Role'] = userData.user.rol;
+      }
     }
+  } catch (error) {
+    console.error('Error al procesar el usuario para auditoría:', error);
   }
   return config;
 });
@@ -42,13 +47,13 @@ class AuditoriaService {
   async registrar(accion, tabla, detalles = {}, registroId = null) {
     const user = this.getUserInfo();
     if (!user) {
-      console.error('No hay usuario autenticado');
+      console.warn('No hay usuario autenticado para la auditoría');
       return;
     }
 
     const datos = {
       usuario_id: user.id,
-      usuario_nombre: user.name,
+      usuario_nombre: user.nombre || user.name,
       accion: accion,
       tabla_afectada: tabla,
       registro_id: registroId,
@@ -66,7 +71,8 @@ class AuditoriaService {
       return response.data;
     } catch (error) {
       console.error('Error al registrar auditoría:', error);
-      throw error;
+      // No lanzar el error para no interrumpir el flujo principal
+      return null;
     }
   }
 

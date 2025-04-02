@@ -5,26 +5,36 @@ const api = axios.create({
   baseURL: 'http://localhost:5000',
   headers: {
     'Content-Type': 'application/json'
-  },
-  withCredentials: true
+  }
 });
 
 // Interceptor para añadir headers de autenticación
 api.interceptors.request.use(
   config => {
-    // Obtener la información del usuario almacenada en localStorage
-    const userInfo = JSON.parse(localStorage.getItem('user'));
+    // Si es una consulta GET, no añadimos headers de autenticación para mantener compatibilidad
+    if (config.method === 'get') {
+      return config;
+    }
     
-    // Agregar headers de autenticación solo si hay un usuario logueado
-    if (userInfo && userInfo.user) {
-      // Usar X-User-Name y X-User-Id en lugar de user-name y user-id
-      config.headers['X-User-Name'] = userInfo.user.name;
-      config.headers['X-User-Id'] = userInfo.user.id;
+    try {
+      // Obtener la información del usuario almacenada en localStorage
+      const userStr = localStorage.getItem('user');
       
-      // Si el usuario tiene un rol, agregarlo también
-      if (userInfo.user.role) {
-        config.headers['X-User-Role'] = userInfo.user.role;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        
+        if (userData.user && userData.token) {
+          // Añadir token de autenticación
+          config.headers['Authorization'] = `Bearer ${userData.token}`;
+          
+          // Añadir información del usuario
+          config.headers['X-User-Id'] = userData.user.id;
+          config.headers['X-User-Name'] = userData.user.nombre || userData.user.name;
+          config.headers['X-User-Role'] = userData.user.rol || userData.user.role;
+        }
       }
+    } catch (error) {
+      console.error('Error al procesar usuario para API:', error);
     }
     
     return config;
@@ -37,44 +47,84 @@ api.interceptors.request.use(
 const apiService = {
   // Productos
   getProductos: async () => {
-    const response = await api.get('/productos');
-    return response.data;
+    try {
+      const response = await api.get('/productos');
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener productos:', error);
+      throw error;
+    }
   },
 
   crearProducto: async (producto) => {
-    const response = await api.post('/productos', producto);
-    return response.data;
+    try {
+      const response = await api.post('/productos', producto);
+      return response.data;
+    } catch (error) {
+      console.error('Error al crear producto:', error);
+      throw error;
+    }
   },
 
   actualizarProducto: async (id, producto) => {
-    const response = await api.put(`/productos/${id}`, producto);
-    return response.data;
+    try {
+      const response = await api.put(`/productos/${id}`, producto);
+      return response.data;
+    } catch (error) {
+      console.error('Error al actualizar producto:', error);
+      throw error;
+    }
   },
 
   eliminarProducto: async (id) => {
-    const response = await api.delete(`/productos/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/productos/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error al eliminar producto:', error);
+      throw error;
+    }
   },
 
   // Entregas
   getEntregas: async () => {
-    const response = await api.get('/entregas');
-    return response.data;
+    try {
+      const response = await api.get('/entregas');
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener entregas:', error);
+      throw error;
+    }
   },
 
   crearEntrega: async (entrega) => {
-    const response = await api.post('/entregas', entrega);
-    return response.data;
+    try {
+      const response = await api.post('/entregas', entrega);
+      return response.data;
+    } catch (error) {
+      console.error('Error al crear entrega:', error);
+      throw error;
+    }
   },
 
   actualizarEntrega: async (id, entrega) => {
-    const response = await api.put(`/entregas/${id}`, entrega);
-    return response.data;
+    try {
+      const response = await api.put(`/entregas/${id}`, entrega);
+      return response.data;
+    } catch (error) {
+      console.error('Error al actualizar entrega:', error);
+      throw error;
+    }
   },
 
   eliminarEntrega: async (id) => {
-    const response = await api.delete(`/entregas/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/entregas/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error al eliminar entrega:', error);
+      throw error;
+    }
   },
 
   // Recordatorios
@@ -115,24 +165,44 @@ const apiService = {
 
   // Alertas y Estadísticas
   getProductosStockBajo: async () => {
-    const response = await api.get('/productos/stock-bajo');
-    return response.data;
+    try {
+      const response = await api.get('/productos/stock-bajo');
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener productos con stock bajo:', error);
+      throw error;
+    }
   },
 
   getProductosPorVencer: async () => {
-    const response = await api.get('/productos/por-vencer');
-    return response.data;
+    try {
+      const response = await api.get('/productos/por-vencer');
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener productos por vencer:', error);
+      throw error;
+    }
   },
 
   getHistorico: async () => {
-    const response = await api.get('/productos/historico');
-    return response.data;
+    try {
+      const response = await api.get('/productos/historico');
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener histórico:', error);
+      throw error;
+    }
   },
 
   // Cronograma
   getCronograma: async () => {
-    const response = await api.get('/cronogramas');
-    return response.data;
+    try {
+      const response = await api.get('/cronogramas');
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener cronograma:', error);
+      throw error;
+    }
   }
 };
 

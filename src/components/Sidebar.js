@@ -1,8 +1,14 @@
 import { Link } from "react-router-dom";
-import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider } from "@mui/material";
-import { Dashboard, Inventory, Assessment, Warning, LocalShipping, History, CalendarToday, Person } from "@mui/icons-material";
+import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider, Box } from "@mui/material";
+import { Dashboard, Inventory, Assessment, Warning, LocalShipping, History, CalendarToday, Person, Group, AdminPanelSettings } from "@mui/icons-material";
+import { useAuth } from "../context/AuthContext";
 
 const Sidebar = ({ open, handleDrawerToggle }) => {
+  const { user } = useAuth();
+  
+  // Verificar si el usuario es superadmin (creador)
+  const isSuperAdmin = user && (user.email === 'admin@example.com');
+  
   return (
     <Drawer
       variant="temporary"
@@ -56,6 +62,14 @@ const Sidebar = ({ open, handleDrawerToggle }) => {
       </List>
       <Divider />
       <List>
+        {isSuperAdmin && (
+          <ListItem disablePadding>
+            <ListItemButton component={Link} to="/gestion-usuarios" sx={{ bgcolor: 'rgba(63, 81, 181, 0.08)' }}>
+              <ListItemIcon><Group color="primary" /></ListItemIcon>
+              <ListItemText primary="Gestión de Usuarios" />
+            </ListItemButton>
+          </ListItem>
+        )}
         <ListItem disablePadding>
           <ListItemButton component={Link} to="/perfil">
             <ListItemIcon><Person /></ListItemIcon>

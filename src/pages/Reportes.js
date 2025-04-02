@@ -26,6 +26,7 @@ import {
   Select,
   MenuItem,
   useTheme,
+  TablePagination,
 } from "@mui/material";
 import {
   Search as SearchIcon,
@@ -68,7 +69,24 @@ const Reportes = () => {
   const theme = useTheme();
   const [reportes, setReportes] = useState([]);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const [openDialog, setOpenDialog] = useState(false);
+  const [periodoGrafico, setPeriodoGrafico] = useState('6meses');
+  const [añoSeleccionado, setAñoSeleccionado] = useState(dayjs().year());
+  const [mesSeleccionado, setMesSeleccionado] = useState(dayjs().month());
+  const [chartData, setChartData] = useState({
+    labels: [],
+    datasets: [
+      {
+        label: 'Reportes Generados',
+        data: [],
+        backgroundColor: theme.palette.primary.main + '40',
+        borderColor: theme.palette.primary.main,
+        borderWidth: 1,
+      },
+    ],
+  });
   const [nuevoReporte, setNuevoReporte] = useState({
     tipo: "",
     fechaInicio: "",
@@ -99,8 +117,13 @@ const Reportes = () => {
 
   useEffect(() => {
     fetchReportes();
-    calcularEstadisticas();
   }, []);
+
+  useEffect(() => {
+    if (reportes.length > 0) {
+      calcularEstadisticas();
+    }
+  }, [reportes]);
 
   const fetchReportes = async () => {
     try {
@@ -121,7 +144,88 @@ const Reportes = () => {
       ).length,
       categoriasMasReportadas: obtenerCategoriasMasReportadas()
     });
+
+    // Actualizar datos del gráfico
+    actualizarDatosGrafico();
   };
+
+  const actualizarDatosGrafico = () => {
+    let labels = [];
+    let datos = [];
+
+    switch (periodoGrafico) {
+      case '12meses':
+        // Últimos 12 meses
+        for (let i = 11; i >= 0; i--) {
+          const mes = dayjs().subtract(i, 'month');
+          labels.push(mes.format('MMM YY'));
+          const reportesMes = reportes.filter(reporte => 
+            dayjs(reporte.fecha).format('YYYY-MM') === mes.format('YYYY-MM')
+          ).length;
+          datos.push(reportesMes);
+        }
+        break;
+
+      case '6meses':
+        // Últimos 6 meses
+        for (let i = 5; i >= 0; i--) {
+          const mes = dayjs().subtract(i, 'month');
+          labels.push(mes.format('MMM YY'));
+          const reportesMes = reportes.filter(reporte => 
+            dayjs(reporte.fecha).format('YYYY-MM') === mes.format('YYYY-MM')
+          ).length;
+          datos.push(reportesMes);
+        }
+        break;
+
+      case 'año':
+        // Meses del año seleccionado
+        for (let i = 0; i < 12; i++) {
+          const mes = dayjs().year(añoSeleccionado).month(i);
+          labels.push(mes.format('MMM'));
+          const reportesMes = reportes.filter(reporte => 
+            dayjs(reporte.fecha).format('YYYY-MM') === mes.format('YYYY-MM')
+          ).length;
+          datos.push(reportesMes);
+        }
+        break;
+
+      case 'mes':
+        // Días del mes seleccionado
+        const diasEnMes = dayjs().year(añoSeleccionado).month(mesSeleccionado).daysInMonth();
+        for (let i = 1; i <= diasEnMes; i++) {
+          const dia = dayjs().year(añoSeleccionado).month(mesSeleccionado).date(i);
+          labels.push(dia.format('DD'));
+          const reportesDia = reportes.filter(reporte => 
+            dayjs(reporte.fecha).format('YYYY-MM-DD') === dia.format('YYYY-MM-DD')
+          ).length;
+          datos.push(reportesDia);
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    setChartData({
+      labels,
+      datasets: [
+        {
+          label: 'Reportes Generados',
+          data: datos,
+          backgroundColor: theme.palette.primary.main + '40',
+          borderColor: theme.palette.primary.main,
+          borderWidth: 1,
+        },
+      ],
+    });
+  };
+
+  useEffect(() => {
+    if (reportes.length > 0) {
+      actualizarDatosGrafico();
+    }
+  }, [reportes, periodoGrafico, añoSeleccionado, mesSeleccionado]);
 
   const obtenerCategoriasMasReportadas = () => {
     const categorias = {};
@@ -165,14 +269,15 @@ const Reportes = () => {
       }
 
       const response = await axios.post(endpoint, data, {
-        timeout: 60000,
-        headers: {
-          'Content-Type': 'application/json'
-        }
+          timeout: 60000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
       });
 
       if (response.data.success) {
-        window.location.href = `http://localhost:5000/reportes/${response.data.archivo}`;
+        // Abrir en una nueva ventana en lugar de redirigir la ventana actual
+        window.open(`http://localhost:5000/reportes/${response.data.archivo}`, '_blank', 'noopener,noreferrer');
         setOpenDialog(false);
         alert('Reporte generado exitosamente');
         fetchReportes();
@@ -194,43 +299,39 @@ const Reportes = () => {
 
   const handleDownload = async (id) => {
     try {
-      const response = await axios.get(`http://localhost:5000/reportes/${id}/download`, {
-        responseType: 'blob'
-      });
+      // Primero obtenemos la información del reporte para conocer el nombre del archivo
+      const reporteInfo = reportes.find(reporte => reporte.id === id);
       
-      const contentType = response.headers['content-type'];
-      const extension = contentType.includes('pdf') ? 'pdf' : 'xlsx';
+      if (!reporteInfo || !reporteInfo.nombre) {
+        console.error("Error: No se encontró información del reporte");
+        return;
+      }
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `reporte-${id}.${extension}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      // Utilizamos directamente el endpoint /reportes/:nombre como está configurado en el backend
+      const url = `http://localhost:5000/reportes/${reporteInfo.nombre}`;
+      
+      // Abrimos el archivo en una nueva ventana especificando características
+      window.open(url, '_blank', 'noopener,noreferrer');
+      
+      // Registramos el evento de descarga
+      console.log("Descargando reporte:", reporteInfo.nombre);
     } catch (error) {
       console.error("Error al descargar reporte:", error);
     }
   };
 
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
   const filteredReportes = reportes.filter((reporte) =>
     reporte.nombre.toLowerCase().includes(search.toLowerCase())
   );
-
-  // Configuración del gráfico
-  const chartData = {
-    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'],
-    datasets: [
-      {
-        label: 'Reportes Generados',
-        data: [12, 19, 3, 5, 2, 3],
-        backgroundColor: theme.palette.primary.main + '40',
-        borderColor: theme.palette.primary.main,
-        borderWidth: 1,
-      },
-    ],
-  };
 
   const chartOptions = {
     responsive: true,
@@ -248,8 +349,9 @@ const Reportes = () => {
     scales: {
       y: {
         beginAtZero: true,
+        max: 35,
         ticks: {
-          stepSize: 1,
+          stepSize: 5,
           color: theme.palette.text.secondary,
         },
         grid: {
@@ -530,7 +632,9 @@ const Reportes = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredReportes.map((reporte) => (
+                {filteredReportes
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((reporte) => (
                   <TableRow 
                     key={reporte.id}
                     sx={{
@@ -562,6 +666,25 @@ const Reportes = () => {
               </TableBody>
             </Table>
           </TableContainer>
+
+          <TablePagination
+            component="div"
+            count={filteredReportes.length}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            labelRowsPerPage="Filas por página"
+            labelDisplayedRows={({ from, to, count }) => 
+              `${from}-${to} de ${count}`
+            }
+            sx={{
+              '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                color: 'text.secondary',
+                fontSize: '0.875rem'
+              }
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -583,10 +706,75 @@ const Reportes = () => {
         border: 1,
         borderColor: 'divider'
       }}>
-        <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
           <TrendingUpIcon sx={{ fontSize: 24, mr: 1, color: theme.palette.success.main }} />
           Tendencia de Reportes Generados
         </Typography>
+          
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Período</InputLabel>
+              <Select
+                value={periodoGrafico}
+                label="Período"
+                onChange={(e) => setPeriodoGrafico(e.target.value)}
+              >
+                <MenuItem value="6meses">Últimos 6 meses</MenuItem>
+                <MenuItem value="12meses">Últimos 12 meses</MenuItem>
+                <MenuItem value="año">Por año</MenuItem>
+                <MenuItem value="mes">Por mes</MenuItem>
+              </Select>
+            </FormControl>
+
+            {periodoGrafico === 'año' && (
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel>Año</InputLabel>
+                <Select
+                  value={añoSeleccionado}
+                  label="Año"
+                  onChange={(e) => setAñoSeleccionado(e.target.value)}
+                >
+                  {Array.from({ length: 5 }, (_, i) => dayjs().year() - i).map(año => (
+                    <MenuItem key={año} value={año}>{año}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
+            {periodoGrafico === 'mes' && (
+              <>
+                <FormControl size="small" sx={{ minWidth: 100 }}>
+                  <InputLabel>Año</InputLabel>
+                  <Select
+                    value={añoSeleccionado}
+                    label="Año"
+                    onChange={(e) => setAñoSeleccionado(e.target.value)}
+                  >
+                    {Array.from({ length: 5 }, (_, i) => dayjs().year() - i).map(año => (
+                      <MenuItem key={año} value={año}>{año}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Mes</InputLabel>
+                  <Select
+                    value={mesSeleccionado}
+                    label="Mes"
+                    onChange={(e) => setMesSeleccionado(e.target.value)}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <MenuItem key={i} value={i}>
+                        {dayjs().month(i).format('MMMM')}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </>
+            )}
+          </Box>
+        </Box>
+
         <Box sx={{ height: 300 }}>
           <Bar data={chartData} options={chartOptions} />
         </Box>
@@ -617,9 +805,9 @@ const Reportes = () => {
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Tipo de Reporte</InputLabel>
-            <Select
-              value={nuevoReporte.tipo}
+                <InputLabel>Tipo de Reporte</InputLabel>
+                <Select
+                  value={nuevoReporte.tipo}
               onChange={(e) => setNuevoReporte({ ...nuevoReporte, tipo: e.target.value })}
             >
               {tiposReporte.map((tipo) => (

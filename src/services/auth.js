@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { auditoriaService } from './auditoria';
 
 const API_URL = 'http://localhost:5000';
 
@@ -11,14 +10,22 @@ const axiosInstance = axios.create({
   }
 });
 
-// Interceptor para añadir el nombre de usuario a todas las peticiones
+// Interceptor para añadir los encabezados de autenticación
 axiosInstance.interceptors.request.use(
   (config) => {
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user?.user?.name) {
-      config.headers['user-name'] = user.user.name;
-      config.headers['user-id'] = user.user.id;
-      config.headers['user-role'] = user.user.role;
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        if (userData.user && userData.token) {
+          config.headers['Authorization'] = `Bearer ${userData.token}`;
+          config.headers['X-User-Id'] = userData.user.id;
+          config.headers['X-User-Name'] = userData.user.nombre;
+          config.headers['X-User-Role'] = userData.user.rol;
+        }
+      }
+    } catch (error) {
+      console.error('Error al procesar el usuario:', error);
     }
     return config;
   },
@@ -29,68 +36,44 @@ axiosInstance.interceptors.request.use(
 
 // Credenciales de prueba (SOLO PARA DESARROLLO)
 const TEST_CREDENTIALS = {
-  email: 'brandon@ejemplo.com',
-  password: 'Patrones123'
+  email: 'admin@example.com',
+  password: 'admin123'
 };
 
 export const authService = {
   async login(email, password) {
     try {
-      if (email === TEST_CREDENTIALS.email && password === TEST_CREDENTIALS.password) {
-        const mockResponse = {
-          user: {
-            id: 1,
-            email: email,
-            name: 'Brandon',
-            role: 'admin'
-          },
-          token: 'mock-jwt-token'
-        };
-        
-        // Guardar en localStorage antes de registrar la auditoría
-        localStorage.setItem('user', JSON.stringify(mockResponse));
-
-        // Registrar el login usando el nuevo servicio de auditoría
-        await auditoriaService.registrar(
-          'login',
-          'usuarios',
-          {
-            email: email,
-            nombre: mockResponse.user.name
-          }
-        );
-
-        return mockResponse;
-      } else {
-        throw new Error('Credenciales inválidas');
+      console.log('Intentando login con:', { email, password });
+      const response = await axiosInstance.post('/api/auth/login', { email, password });
+      console.log('Respuesta del servidor:', response.data);
+      
+      if (response.data) {
+        localStorage.setItem('user', JSON.stringify(response.data));
+        return response.data;
       }
+      throw new Error('Respuesta inválida del servidor');
     } catch (error) {
-      throw new Error(error.message || 'Error al iniciar sesión');
+      console.error('Error completo en login:', error);
+      if (error.response) {
+        throw new Error(error.response.data.message || error.response.data.error || 'Error al iniciar sesión');
+      }
+      throw new Error('Error de conexión con el servidor');
     }
   },
 
-  async logout() {
-    try {
-      const user = this.getCurrentUser();
-      if (user) {
-        await auditoriaService.registrar(
-          'logout',
-          'usuarios',
-          {
-            email: user.user.email,
-            nombre: user.user.name
-          }
-        );
-      }
-    } catch (error) {
-      console.error('Error al registrar el cierre de sesión:', error);
-    } finally {
-      localStorage.removeItem('user');
-    }
+  logout() {
+    localStorage.removeItem('user');
   },
 
   getCurrentUser() {
-    return JSON.parse(localStorage.getItem('user'));
+    try {
+      const userStr = localStorage.getItem('user');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch (error) {
+      console.error('Error al obtener usuario actual:', error);
+      localStorage.removeItem('user');
+      return null;
+    }
   },
 
   isAuthenticated() {

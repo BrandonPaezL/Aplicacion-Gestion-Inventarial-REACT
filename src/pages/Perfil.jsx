@@ -26,6 +26,14 @@ const Perfil = () => {
     return null;
   }
 
+  // Extraer las propiedades correctamente, independientemente de la estructura
+  const userName = user.name || (user.user && user.user.name) || "";
+  const userEmail = user.email || (user.user && user.user.email) || "";
+  const userRole = user.rol || user.role || (user.user && (user.user.rol || user.user.role)) || "usuario";
+  
+  // Determinar si es administrador
+  const isAdmin = userRole === 'admin';
+
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', p: 3 }}>
       <Paper elevation={3} sx={{ p: 4 }}>
@@ -39,13 +47,13 @@ const Perfil = () => {
               mb: 2,
             }}
           >
-            {user.user.name.charAt(0)}
+            {userName.charAt(0)}
           </Avatar>
           <Typography variant="h4" component="h1" gutterBottom>
-            {user.user.name}
+            {userName}
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
-            {user.user.role === 'admin' ? 'Administrador' : 'Usuario'}
+            {isAdmin ? 'Administrador' : 'Usuario'}
           </Typography>
         </Box>
 
@@ -63,7 +71,7 @@ const Perfil = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="Nombre"
-                  secondary={user.user.name}
+                  secondary={userName}
                 />
               </ListItem>
               <ListItem>
@@ -72,7 +80,7 @@ const Perfil = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="Correo Electrónico"
-                  secondary={user.user.email}
+                  secondary={userEmail}
                 />
               </ListItem>
               <ListItem>
@@ -81,7 +89,7 @@ const Perfil = () => {
                 </ListItemIcon>
                 <ListItemText
                   primary="Rol"
-                  secondary={user.user.role === 'admin' ? 'Administrador' : 'Usuario'}
+                  secondary={isAdmin ? 'Administrador' : 'Usuario'}
                 />
               </ListItem>
               <ListItem>
